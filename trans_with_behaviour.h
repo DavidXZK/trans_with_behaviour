@@ -88,7 +88,7 @@ class Individual
 		bool is_treat,is_prevention;//治疗以及预防
 		Disease*disease;
 		unordered_map<int,int> home,school,work,friends,community,commute;  //id-age
-		unordered_map<int,double> temp_infectious;  //临时感染?
+		//unordered_map<int,double> temp_infectious;  //临时感染?
 		Individual(int pid,int age,int slaveid):pid(pid),age(age),slaveid(slaveid),infectious_ratio(infectious_rate)
 		{
 			is_treat = false;

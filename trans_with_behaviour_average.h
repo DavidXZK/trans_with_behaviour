@@ -87,8 +87,9 @@ class Individual
 		double susceptible,infectious,infectious_ratio;
 		bool is_treat,is_prevention;//治疗以及预防
 		Disease*disease;
+		vector<int> infective_number;        //record previous infective numberss
 		unordered_map<int,int> home,school,work,friends,community,commute;  //id-age
-		unordered_map<int,double> temp_infectious;  //临时感染?
+		//unordered_map<int,double> temp_infectious;  //临时感染?
 		Individual(int pid,int age,int slaveid):pid(pid),age(age),slaveid(slaveid),infectious_ratio(infectious_rate)
 		{
 			is_treat = false;
@@ -285,7 +286,7 @@ int getImmune(SubArea* apt,Individual*inv)
 		return 0;
 	}
 }
-void Traversal_singal(unordered_map<int,int>& umap,int& infect,int& dead){
+void Traversal_singal(unordered_map<int,int>& umap,int& infect,int& dead){   //记录每次的信息
 	unordered_map<int,int>::iterator it = umap.begin();
 	while(it != umap.end()){
 		int pid = it->first;
