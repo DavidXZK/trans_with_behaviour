@@ -19,7 +19,8 @@ const int SEED_NUM = 2000;
 typedef unordered_map<int,int>::iterator id_age_iter;
 class Individual;
 int n,T,cutage;
-int currentInfo[2];
+const int AVN = 3;
+double currentInfo[2];
 double LAMDA,infectious_rate,death_rate;
 double mean_latency,mean_infectious_pre,mean_infectious_sym,mean_infectious_asym;
 double Age_infectious_rate,Age_susceptible_rate;
@@ -31,6 +32,8 @@ double ill_rate_prevention,ill_rate_treat,infectious_treat;
 double get_treat_rate,get_immune_rate;
 double school_decrease,work_decrease;
 double global_infect_para,global_dead_para,local_infect_para,local_dead_para;
+vector<int> global_infect;
+vector<int> global_dead;
 void Parameter(ifstream& fin){
     fin>>n>>T>>cutage;
     fin>>LAMDA>>infectious_rate>>death_rate;
@@ -45,7 +48,7 @@ void Parameter(ifstream& fin){
 	fin>>school_decrease>>work_decrease;
 	fin>>global_infect_para>>global_dead_para>>local_infect_para>>local_dead_para;
 }
-double alpha(int a,int b,int c,int d){//globalinfect globaldead localinfect localdead
+double alpha(double a,double b,double c,double d){//globalinfect globaldead localinfect localdead
 	double r = exp(-(a*global_infect_para+b*global_dead_para+c*local_infect_para+d*local_dead_para));
 	return r;
 }
@@ -87,7 +90,9 @@ class Individual
 		double susceptible,infectious,infectious_ratio;
 		bool is_treat,is_prevention;//治疗以及预防
 		Disease*disease;
-		vector<int> infective_number;        //record previous infective numberss
+		//vector<int> infective_number;        //record previous infective number
+		unordered_map<int,int> infective_number;
+		unordered_map<int,int> dead_number;
 		unordered_map<int,int> home,school,work,friends,community,commute;  //id-age
 		//unordered_map<int,double> temp_infectious;  //临时感染?
 		Individual(int pid,int age,int slaveid):pid(pid),age(age),slaveid(slaveid),infectious_ratio(infectious_rate)
@@ -320,14 +325,31 @@ void CalInfect(SubArea* apt,Individual* inv,double re_infectious_rate,double cur
 		int id = iter1->first;
 		int age = iter1->second;
 		unordered_map<int,individual*>::iterator it = myarea->individuals.find(id);
-		int dead = 0;
-		int infect = 0;
+		int dead = 0;int infect = 0;
 		if(it != myarea->individuals.end()){
-			Traversal(it->second,infect,dead);
+			HashMap<int,int>& map_infective = it->second->infective_number;
+			HashMap<int,int>& map_dead = it->second->dead_num;
+			HashMap<int,int>::iterator it_time = map_infective.find(current_time);
+			if(it_time!= map_infective.end()){   //find it has been calculated
+				infect = it_time->second;
+				dead = map_dead.find(current_time)->second;
+			}
+			else{
+				Traversal(it->second,infect,dead);
+				map_infective.insert(make_pair(current_time,infect));
+				map_dead.insert(make_pair(current_time,dead));
+			}
+			int sizes = (map_infective.size() <= AVN)?map_infective.size():AVN;
 		}//获得周围的感染者和死亡者
-		double ex = alpha(currentInfo[0],currentInfo[1],infect,dead);// ex is between 0-1
-		double lamda = ((age>=cutage)?1.0:Age_susceptible_rate)*
-		LAMDA*re_infectious_rate*home_intensity*ageir*ex;
+		int sum_in = 0,sum_dead = 0;
+		for(int i = 0;i < sizes;i ++){
+			sum_in += map_infective.find(current_time - i)->second;
+			sum_dead += map_dead.find(current_time - i)->second;
+		}
+		double dinfect = (double)sum_in / (double)sizes;
+		double ddead = (double)sum_dead / (double)sizes; 
+		double ex = alpha(currentInfo[0],currentInfo[1],dinfect,ddead);// ex is between 0-1
+		double lamda = ((age>=cutage)?1.0:Age_susceptible_rate)*LAMDA*re_infectious_rate*home_intensity*ageir*ex;
 		double random = (double)rand()/RAND_MAX;
 		double infect_time = (-(double)1/lamda)*log(1-random);
 		if(infect_time <= period)
@@ -345,9 +367,28 @@ void CalInfect(SubArea* apt,Individual* inv,double re_infectious_rate,double cur
 		unordered_map<int,individual*>::iterator it = myarea->individuals.find(id);
 		int dead = 0,infect = 0;
 		if(it != myarea->individuals.end()){
-			Traversal(it->second,infect,dead);
+			HashMap<int,int>& map_infective = it->second->infective_number;
+			HashMap<int,int>& map_dead = it->second->dead_num;
+			HashMap<int,int>::iterator it_time = map_infective.find(current_time);
+			if(it_time!= map_infective.end()){   //find it has been calculated
+				infect = it_time->second;
+				dead = map_dead.find(current_time)->second;
+			}
+			else{
+				Traversal(it->second,infect,dead);
+				map_infective.insert(make_pair(current_time,infect));
+				map_dead.insert(make_pair(current_time,dead));
+			}
+			int sizes = (map_infective.size() <= AVN)?map_infective.size():AVN;
+		}//获得周围的感染者和死亡者
+		int sum_in = 0,sum_dead = 0;
+		for(int i = 0;i < sizes;i ++){
+			sum_in += map_infective.find(current_time - i)->second;
+			sum_dead += map_dead.find(current_time - i)->second;
 		}
-		double ex = alpha(currentInfo[0],currentInfo[1],infect,dead);
+		double dinfect = (double)sum_in / (double)sizes;
+		double ddead = (double)sum_dead / (double)sizes; 
+		double ex = alpha(currentInfo[0],currentInfo[1],dinfect,ddead);
 		double lamda = ((age>=cutage)?1.0:Age_susceptible_rate)*
 		LAMDA*re_infectious_rate*school_intensity*ageir*(1-school_decrease)*ex;
 		double random = (double)rand()/RAND_MAX;
@@ -366,10 +407,29 @@ void CalInfect(SubArea* apt,Individual* inv,double re_infectious_rate,double cur
 		int age = iter1->second;
 		unordered_map<int,individual*>::iterator it = myarea->individuals.find(id);
 		int dead = 0,infect = 0;
-		if(it!= myarea->individuals.end()){
-			Traversal(it->second,infect,dead);
+		if(it != myarea->individuals.end()){
+			HashMap<int,int>& map_infective = it->second->infective_number;
+			HashMap<int,int>& map_dead = it->second->dead_num;
+			HashMap<int,int>::iterator it_time = map_infective.find(current_time);
+			if(it_time!= map_infective.end()){   //find it has been calculated
+				infect = it_time->second;
+				dead = map_dead.find(current_time)->second;
+			}
+			else{
+				Traversal(it->second,infect,dead);
+				map_infective.insert(make_pair(current_time,infect));
+				map_dead.insert(make_pair(current_time,dead));
+			}
+			int sizes = (map_infective.size() <= AVN)?map_infective.size():AVN;
+		}//获得周围的感染者和死亡者
+		int sum_in = 0,sum_dead = 0;
+		for(int i = 0;i < sizes;i ++){
+			sum_in += map_infective.find(current_time - i)->second;
+			sum_dead += map_dead.find(current_time - i)->second;
 		}
-		double ex = alpha(currentInfo[0],currentInfo[1],infect,dead);
+		double dinfect = (double)sum_in / (double)sizes;
+		double ddead = (double)sum_dead / (double)sizes; 
+		double ex = alpha(currentInfo[0],currentInfo[1],dinfect,ddead);
 		double lamda = ((age>=cutage)?1.0:Age_susceptible_rate)*
 		LAMDA*re_infectious_rate*work_intensity*ageir*(1-work_decrease)*ex;
 		double random = (double)rand()/RAND_MAX;
@@ -389,9 +449,28 @@ void CalInfect(SubArea* apt,Individual* inv,double re_infectious_rate,double cur
 		unordered_map<int,individual*>::iterator it = myarea->individuals.find(id);
 		int dead = 0,infect = 0;
 		if(it != myarea->individuals.end()){
-			Traversal(it->second,infect,dead);
+			HashMap<int,int>& map_infective = it->second->infective_number;
+			HashMap<int,int>& map_dead = it->second->dead_num;
+			HashMap<int,int>::iterator it_time = map_infective.find(current_time);
+			if(it_time!= map_infective.end()){   //find it has been calculated
+				infect = it_time->second;
+				dead = map_dead.find(current_time)->second;
+			}
+			else{
+				Traversal(it->second,infect,dead);
+				map_infective.insert(make_pair(current_time,infect));
+				map_dead.insert(make_pair(current_time,dead));
+			}
+			int sizes = (map_infective.size() <= AVN)?map_infective.size():AVN;
+		}//获得周围的感染者和死亡者
+		int sum_in = 0,sum_dead = 0;
+		for(int i = 0;i < sizes;i ++){
+			sum_in += map_infective.find(current_time - i)->second;
+			sum_dead += map_dead.find(current_time - i)->second;
 		}
-		double ex = alpha(currentInfo[0],currentInfo[1],infect,dead);
+		double dinfect = (double)sum_in / (double)sizes;
+		double ddead = (double)sum_dead / (double)sizes; 
+		double ex = alpha(currentInfo[0],currentInfo[1],dinfect,ddead);
 		double lamda = ((age>=cutage)?1.0:Age_susceptible_rate)*
 		LAMDA*re_infectious_rate*friends_intensity*ageir*ex;
 		double random = (double)rand()/RAND_MAX;
@@ -411,9 +490,28 @@ void CalInfect(SubArea* apt,Individual* inv,double re_infectious_rate,double cur
 		unordered_map<int,individual*>::iterator it = myarea->individuals.find(id);
 		int dead = 0,infect = 0;
 		if(it != myarea->individuals.end()){
-			Traversal(it->second,infect,dead);
+			HashMap<int,int>& map_infective = it->second->infective_number;
+			HashMap<int,int>& map_dead = it->second->dead_num;
+			HashMap<int,int>::iterator it_time = map_infective.find(current_time);
+			if(it_time!= map_infective.end()){   //find it has been calculated
+				infect = it_time->second;
+				dead = map_dead.find(current_time)->second;
+			}
+			else{
+				Traversal(it->second,infect,dead);
+				map_infective.insert(make_pair(current_time,infect));
+				map_dead.insert(make_pair(current_time,dead));
+			}
+			int sizes = (map_infective.size() <= AVN)?map_infective.size():AVN;
+		}//获得周围的感染者和死亡者
+		int sum_in = 0,sum_dead = 0;
+		for(int i = 0;i < sizes;i ++){
+			sum_in += map_infective.find(current_time - i)->second;
+			sum_dead += map_dead.find(current_time - i)->second;
 		}
-		double ex = alpha(currentInfo[0],currentInfo[1],infect,dead);
+		double dinfect = (double)sum_in / (double)sizes;
+		double ddead = (double)sum_dead / (double)sizes; 
+		double ex = alpha(currentInfo[0],currentInfo[1],dinfect,ddead);
 		double lamda = ((age>=cutage)?1.0:Age_susceptible_rate)*
 		LAMDA*re_infectious_rate*community_intensity*ageir*ex;
 		double random = (double)rand()/RAND_MAX;
@@ -433,9 +531,28 @@ void CalInfect(SubArea* apt,Individual* inv,double re_infectious_rate,double cur
 		unordered_map<int,individual*>::iterator it = myarea->individuals.find(id);
 		int dead = 0,infect = 0;
 		if(it != myarea->individuals.end()){
-			Traversal(it->second,infect,dead);
+			HashMap<int,int>& map_infective = it->second->infective_number;
+			HashMap<int,int>& map_dead = it->second->dead_num;
+			HashMap<int,int>::iterator it_time = map_infective.find(current_time);
+			if(it_time!= map_infective.end()){   //find it has been calculated
+				infect = it_time->second;
+				dead = map_dead.find(current_time)->second;
+			}
+			else{
+				Traversal(it->second,infect,dead);
+				map_infective.insert(make_pair(current_time,infect));
+				map_dead.insert(make_pair(current_time,dead));
+			}
+			int sizes = (map_infective.size() <= AVN)?map_infective.size():AVN;
+		}//获得周围的感染者和死亡者
+		int sum_in = 0,sum_dead = 0;
+		for(int i = 0;i < sizes;i ++){
+			sum_in += map_infective.find(current_time - i)->second;
+			sum_dead += map_dead.find(current_time - i)->second;
 		}
-		double ex = alpha(currentInfo[0],currentInfo[1],infect,dead);
+		double dinfect = (double)sum_in / (double)sizes;
+		double ddead = (double)sum_dead / (double)sizes; 
+		double ex = alpha(currentInfo[0],currentInfo[1],dinfect,ddead);
 		double lamda = ((age>=cutage)?1.0:Age_susceptible_rate)*
 		LAMDA*re_infectious_rate*commute_intensity*ageir*ex;
 		double random = (double)rand()/RAND_MAX;

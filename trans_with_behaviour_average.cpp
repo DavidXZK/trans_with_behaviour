@@ -6,6 +6,7 @@ double**masterbuf2;double**masterbuf4;
 int*infectious_id1;int*infectious_id2;
 int*prevention_id1;int*prevention_id2;
 double *infectious_time1;double* infectious_time2;
+
 unordered_map<int,int>pid_slaveid; //pid-slave
 ofstream ffout("result_trans_with_behaviour.txt",ofstream::app);
 void Initial_subarea();
@@ -150,11 +151,11 @@ int main(int argc,char**argv){
 		for(int t=0;t<T;t++){       // transmit time from 0 to t
 			if(myid==0){
 				for(int i=1;i<numprocs;i++){
-					MPI_Send(currentInfo,2,MPI_INT,i,1,MPI_COMM_WORLD);
+					MPI_Send(currentInfo,2,MPI_DOUBLE,i,1,MPI_COMM_WORLD);
 				}
 			}else{
 				MPI_Status status;
-				MPI_Recv(currentInfo,2,MPI_INT,0,1,MPI_COMM_WORLD,&status);
+				MPI_Recv(currentInfo,2,MPI_DOUBLE,0,1,MPI_COMM_WORLD,&status);
 			}
 			MPI_Barrier(MPI_COMM_WORLD);
 
@@ -231,8 +232,16 @@ int main(int argc,char**argv){
 				}
 				cout<<t<<" "<<sum_dead<<" "<<sum_recover<<" "<<sum_infect<<endl;
 				ffout<<t<<" "<<sum_dead<<" "<<sum_recover<<" "<<sum_infect<<endl;
-				currentInfo[0] = sum_infect;
-				currentInfo[1] = sum_dead;
+				global_infect.push_back(sum_infect);
+				global_dead.push_back(sum_dead);
+				int sizes = (global_infect.size() <= AVN)?global_infect.size():AVN;
+				double si = 0,sd = 0;
+				for(int i=0;i<sizes;i++){
+					si += global_infect[global_infect.size() - 1 - i];
+					sd += global_dead[global_dead.size() - 1 - i];
+				}
+				currentInfo[0] = si / (double) sizes;
+				currentInfo[1] = sd / (double) sizes;
 				for(int i=0;i<3;i++){
 					delete[] recv_result[i];
 				}
